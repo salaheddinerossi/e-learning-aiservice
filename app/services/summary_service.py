@@ -4,6 +4,9 @@ import openai
 import json
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import HTTPException
 
 # Load API key from .env file
