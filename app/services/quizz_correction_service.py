@@ -1,80 +1,159 @@
-from fastapi import HTTPException
-import openai
 import json
-from dotenv import load_dotenv
 import os
+from fastapi import HTTPException
 
-# Load API key from .env file
-load_dotenv()
+from typing import List
+
+import openai
+
+from dotenv import load_dotenv
 api_key = os.getenv('OPENAI_API_KEY')
+
+load_dotenv()
+from pydantic import BaseModel
+
+from app.Models.CorrectionResponse import CorrectionResponse
+from app.Models.StringQuestionDto import StringQuestionDto
 client = openai.OpenAI(api_key=api_key)
 
-def correct_quiz(transcription: str, quiz: str, quiz_type: str) -> dict:
-    # Define system prompts for different quiz types
-    system_prompts = {
-        'multiple-choice': (
-            "You are a helpful assistant. Your task is to review and correct the multiple-choice quiz based on the provided content, "
-            "ensuring the answers accurately reflect the information given. After reviewing each question, determine if the provided "
-            "answer is exactly the same as the correct answer based on the content. Use a Boolean check for this comparison: return 'true' "
-            "if the answers match (indicating the original answer was correct) and 'false' if they do not match (indicating the original "
-            "answer was incorrect). Once all questions have been assessed, calculate a final score out of 10, with each correct answer "
-            "contributing equally towards a perfect score. Return your response in a structured JSON format that includes the corrected "
-            "quiz questions, their Boolean correctness, and the final grade. The expected JSON response format is: "
-            "{\"evaluation\": {\"questions\": [{\"question\": \"Example question\", \"provided_answer\": \"A\", \"correct_answer\": \"A\", "
-            "\"correctness\": true}], \"score_details\": {\"total_questions\": 1, \"correct_answers\": 1, \"incorrect_answers\": 0, "
-            "\"score\": 10}, \"final_grade\": \"10 out of 10\"}}"
-        ),
-        'true_false': (
-            "You are a helpful assistant. Your task is to review and correct the true/false quiz based on the provided content, ensuring the "
-            "answers accurately reflect the information given. For each question, determine if the provided answer ('True' or 'False') matches "
-            "the correct answer based on the content. Use a Boolean check for this comparison: return 'true' if the answers match (indicating the "
-            "original answer was correct) and 'false' if they do not match (indicating the original answer was incorrect). After reviewing all "
-            "questions, calculate a final score out of 10, with each correct answer contributing equally towards a perfect score. Return your "
-            "response in a structured JSON format that includes the corrected quiz questions, their Boolean correctness, and the final grade. "
-            "An example of the expected JSON response format is: "
-            "{\"evaluation\": {\"questions\": [{\"question\": \"Is the Earth flat?\", \"provided_answer\": \"False\", \"correct_answer\": \"False\", "
-            "\"correctness\": true}], \"score_details\": {\"total_questions\": 1, \"correct_answers\": 1, \"incorrect_answers\": 0, \"score\": 10}, "
-            "\"final_grade\": \"10 out of 10\"}}"
-        ),
 
-        'explanatory': (
-            "You are a helpful assistant. Your task for each explanatory question is to identify what is missing in the student's response "
-            "and grade it out of 10. Consider the completeness, accuracy, and depth of the answer. Then, calculate the average score for "
-            "the quiz. The response should be formatted in JSON, listing each question, the student's answer, the missing elements or "
-            "feedback for improvement, the grade for each question, and the overall average score. Format your response as: "
-            "{\"evaluation\": {\"questions\": [{\"question\": \"Example question\", \"student_answer\": \"Partial explanation\", "
-            "\"feedback\": \"Missing key concept explanation.\", \"grade\": 7}], \"average_score\": \"7 out of 10\"}}"
-        )
-    }
 
-    if quiz_type not in system_prompts:
-        raise ValueError(f"Unsupported quiz type: {quiz_type}")
+
+
+def correct_multiple_choice_quiz(transcription: str, questions: List[StringQuestionDto]) -> CorrectionResponse:
+    # Define the updated system prompt for multiple-choice quizzes
+    system_prompt = (
+        "Based on the student's responses to a set of explanatory questions and the provided transcription, assess their overall understanding. "
+        "Do not correct the answers explicitly. Instead, offer general advice that can help improve their understanding and skills, "
+        "focusing on areas for review and study, key concepts to revisit, and strategies for learning and reinforcement. "
+        "The advice should guide the student towards resources or practices that strengthen their knowledge in areas where they showed uncertainty "
+        "or misunderstanding and encourage exploration of topics that could enhance their programming abilities and confidence. "
+        "Conclude your evaluation with a JSON-formatted response, including 'advices' as a list of strings for the suggestions "
+        "and a 'mark' key for a numerical score from 0 to 10 reflecting the student's grasp of the material. "
+        "Ensure the advice supports positive learning outcomes and fosters a supportive tone."
+    )
+
+    # Format the questions into a string that matches the expected input format for the system prompt
+    questions_formatted = "\n\n".join(
+        [f"Question {i+1}: {q.question}\nProvided Answer: {q.answer}\nCorrect Answer: {q.correctAnswer}" for i, q in enumerate(questions)]
+    )
+
+    # Construct the prompt message
+    prompt_message = f"{system_prompt}\n\nTranscription: {transcription}\n\n{questions_formatted}"
 
     try:
-        prompt_message = {
-            "role": "system",
-            "content": system_prompts[quiz_type]
-        }
-
-        user_message = {
-            "role": "user",
-            "content": f"Content: {transcription}\n\nQuiz: {quiz}"
-        }
-
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[prompt_message, user_message]
+            messages=[
+                {
+                    "role": "system",
+                    "content": prompt_message
+                }
+            ]
         )
 
-        formatted_response = json.loads(response.choices[0].message.content)
+        # Assuming the AI's response is a list of advices as expected
+        advices = response.choices[0].message.content.strip().split("\n")
+        return CorrectionResponse(advices=advices)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        # For explanatory quizzes, process the response to calculate the average score if necessary
-        if quiz_type == 'explanatory':
-            # Implement any specific logic for processing explanatory quiz responses
-            pass  # This is a placeholder for actual implementation
 
-        return formatted_response
+class BooleanQuestionDto(BaseModel):
+    id: int
+    question: str
+    answer: bool
+    correctAnswer: bool
+
+def correct_true_false_quiz(transcription: str, questions: List[BooleanQuestionDto]) -> CorrectionResponse:
+    # Define the system prompt for true/false quizzes
+    system_prompt = (
+        "After analyzing the student's responses to a Python programming quiz with true/false questions, generate general advice that can "
+        "help improve their understanding and skills. The quiz covered basic to intermediate concepts. "
+        "Based on the types of questions answered incorrectly, suggest areas for review and study without referencing specific questions. "
+        "Offer strategies for learning and reinforcement. Provide advice that strengthens their knowledge in areas where they showed uncertainty. "
+        "Maintain a positive and supportive tone."
+    )
+
+    # Format the questions for the system prompt
+    questions_formatted = "\n\n".join(
+        [f"Question {i+1}: {q.question}\nProvided Answer: {'True' if q.answer else 'False'}\nCorrect Answer: {'True' if q.correctAnswer else 'False'}"
+         for i, q in enumerate(questions)]
+    )
+
+    # Construct the prompt message
+    prompt_message = f"{system_prompt}\n\nTranscription: {transcription}\n\n{questions_formatted}"
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": prompt_message
+                }
+            ]
+        )
+
+        # Process the response from OpenAI to extract the advice
+        advices = response.choices[0].message.content.strip().split("\n")
+        return CorrectionResponse(advices=advices)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+class ExplanatoryQuestionDto(BaseModel):
+    id: int
+    question: str
+    answer: str
+    correctAnswer: str
+
+
+class ExplanatoryQuestionsCorrectionResponse(BaseModel):
+    advices: List[str] = []
+    mark: float
+
+
+def correct_explanatory_quiz(transcription: str,
+                             questions: List[ExplanatoryQuestionDto]) -> ExplanatoryQuestionsCorrectionResponse:
+    # Define the system prompt for explanatory quizzes
+    system_prompt = (
+        "After analyzing the student's responses to a set of explanatory questions based on the provided transcription, "
+        "generate general advice to help improve their understanding and skills. Conclude with a numerical score from 0 to 10 "
+        "to reflect the overall quality of the student's answers and their grasp of the concepts discussed. "
+        "Provide your response in JSON format, including 'advices' as a list of strings and 'mark' as the numerical score."
+    )
+
+    # Format the questions for the system prompt
+    questions_formatted = "\n\n".join(
+        [f"Question {i + 1}: {q.question}\nStudent's Answer: {q.answer}" for i, q in enumerate(questions)]
+    )
+
+    # Construct the prompt message
+    prompt_message = f"{system_prompt}\n\nTranscription: {transcription}\n\n{questions_formatted}"
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": prompt_message
+                }
+            ]
+        )
+
+        # Parse the AI's response, expected to be in JSON format
+        correction_data = json.loads(response.choices[0].message.content)
+
+        advices = correction_data.get("advices", [])
+        mark = correction_data.get("mark", 0.0)  # Ensure mark is treated as a float
+
+        return ExplanatoryQuestionsCorrectionResponse(advices=advices, mark=mark)
     except json.JSONDecodeError:
-        raise ValueError("Failed to decode the response from OpenAI as JSON.")
+        raise HTTPException(status_code=500, detail="Failed to decode AI response as JSON.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

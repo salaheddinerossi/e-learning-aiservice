@@ -8,11 +8,11 @@ from app.services.chat_service import reply_to_chat_with_context
 
 router = APIRouter()
 
-class ChatRequest(BaseModel):
+class ChatRequestDto(BaseModel):
     messages: List[Message]
 
 @router.post("/chat/")
-def chat_endpoint(request: ChatRequest):
+def chat_endpoint(request: ChatRequestDto):
     try:
         formatted_messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
 

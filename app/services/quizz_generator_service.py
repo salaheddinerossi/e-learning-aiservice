@@ -11,6 +11,7 @@ client = openai.OpenAI(api_key=api_key)
 
 
 def generate_quiz_from_transcription(transcription: str, additional_instructions: str, question_type: str) -> dict:
+
     message_templates = {
         'multiple-choice': f"""
             "You are a helpful assistant tasked with generating a quiz from the given transcription. Please create multiple-choice questions in the following JSON format, ensuring they are relevant to the content provided. Your goal is to make the quiz both engaging and informative, directly reflecting the key points and details from the transcription.
