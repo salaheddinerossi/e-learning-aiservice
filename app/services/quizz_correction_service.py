@@ -23,14 +23,11 @@ client = openai.OpenAI(api_key=api_key)
 def correct_multiple_choice_quiz(transcription: str, questions: List[StringQuestionDto]) -> CorrectionResponse:
     # Define the updated system prompt for multiple-choice quizzes
     system_prompt = (
-        "Based on the student's responses to a set of explanatory questions and the provided transcription, assess their overall understanding. "
-        "Do not correct the answers explicitly. Instead, offer general advice that can help improve their understanding and skills, "
-        "focusing on areas for review and study, key concepts to revisit, and strategies for learning and reinforcement. "
-        "The advice should guide the student towards resources or practices that strengthen their knowledge in areas where they showed uncertainty "
-        "or misunderstanding and encourage exploration of topics that could enhance their programming abilities and confidence. "
-        "Conclude your evaluation with a JSON-formatted response, including 'advices' as a list of strings for the suggestions "
-        "and a 'mark' key for a numerical score from 0 to 10 reflecting the student's grasp of the material. "
-        "Ensure the advice supports positive learning outcomes and fosters a supportive tone."
+        "After analyzing the student's responses to a Python programming quiz with multiple choice quiz questions, generate general advice that can "
+        "help improve their understanding and skills. The quiz covered basic to intermediate concepts. "
+        "Based on the types of questions answered incorrectly, suggest areas for review and study without referencing specific questions. "
+        "Offer strategies for learning and reinforcement. Provide advice that strengthens their knowledge in areas where they showed uncertainty. "
+        "Maintain a positive and supportive tone."
     )
 
     # Format the questions into a string that matches the expected input format for the system prompt
