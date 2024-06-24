@@ -10,7 +10,6 @@ COPY requirements.txt .
 # Install the project dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the project files into the container
 COPY . .
 
 # Expose the port that FastAPI will run on
